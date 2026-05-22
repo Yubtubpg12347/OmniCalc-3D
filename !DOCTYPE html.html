@@ -1,0 +1,1392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OmniCalc 3D - Dynamic Geometry & Physics Sandbox</title>
+    <!-- Tailwind CSS for modern rapid styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js for high-fidelity 3D modeling -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        /* Custom scrollbar styling for sidebar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1e1e2f;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #4f46e5;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #818cf8;
+        }
+        /* Custom labels overlay container styling */
+        #labels-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            overflow: hidden;
+            z-index: 20;
+        }
+        /* Custom labels overlay styling */
+        .measurement-label {
+            position: absolute;
+            color: #fff;
+            background: rgba(15, 15, 27, 0.9);
+            border: 1px solid #818cf8;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 11px;
+            transform: translate(-50%, -50%);
+            white-space: nowrap;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+            pointer-events: none;
+            z-index: 20;
+            transition: opacity 0.2s;
+        }
+        #canvas-container {
+            flex-grow: 1;
+            position: relative;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at center, #3a3a5a 0%, #1e1e2f 100%);
+            cursor: grab;
+            overflow: hidden;
+        }
+        #canvas-container:active {
+            cursor: grabbing;
+        }
+        canvas {
+            display: block;
+            outline: none;
+        }
+    </style>
+</head>
+<body class="bg-[#0f0f1a] text-gray-100 min-h-screen flex flex-col overflow-hidden selection:bg-indigo-500 selection:text-white">
+
+    <!-- Top Navigation Bar -->
+    <header class="bg-[#16162a] border-b border-[#2e2e4f] px-6 py-4 flex flex-wrap items-center justify-between gap-4 z-20 shadow-md">
+        <div class="flex items-center gap-3">
+            <div class="bg-indigo-600 p-2 rounded-lg text-white font-black tracking-wider text-sm flex items-center justify-center shadow-lg shadow-indigo-500/20">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M21 7.5l-9-5.25L3 7.5m18 0l-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9"></path>
+                </svg>
+            </div>
+            <div>
+                <h1 class="text-lg font-bold tracking-tight bg-gradient-to-r from-white to-indigo-300 bg-clip-text text-transparent">OmniCalc 3D</h1>
+                <p class="text-xs text-gray-400">Dynamic Geometry & Physics Sandbox</p>
+            </div>
+        </div>
+        
+        <!-- Live Environment & Performance Status Pill -->
+        <div class="flex items-center gap-4">
+            <div class="hidden md:flex items-center gap-2 bg-[#252542] px-3 py-1.5 rounded-full text-xs border border-[#3c3c66]">
+                <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span>Active Core: <strong id="engine-status" class="text-indigo-300">GPU Accelerated</strong></span>
+            </div>
+            <div class="flex items-center gap-2">
+                <label for="preset-manager" class="text-xs text-gray-400 font-medium">Scenario Presets:</label>
+                <select id="preset-manager" class="bg-[#1e1e35] text-xs text-indigo-200 border border-indigo-500/30 rounded-lg px-2.5 py-1.5 focus:border-indigo-400 outline-none cursor-pointer">
+                    <option value="default">Default Sandbox</option>
+                    <option value="mars-steel">Structural Steel on Mars</option>
+                    <option value="deepspace-glass">Prism Reflection in Deep Space</option>
+                    <option value="earth-water">Massive Sphere of Water on Earth</option>
+                    <option value="moon-gold">Gold Cube on the Moon</option>
+                </select>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Workspace Container -->
+    <main class="flex-grow flex flex-col lg:flex-row overflow-hidden relative">
+        
+        <!-- Sidebar Controls Panel -->
+        <aside id="sidebar" class="w-full lg:w-[380px] bg-[#16162a] border-r border-[#2e2e4f] flex flex-col overflow-hidden shadow-2xl z-10">
+            <!-- Navigation Tabs -->
+            <nav class="flex border-b border-[#2e2e4f] bg-[#1a1a30] text-xs font-semibold overflow-x-auto">
+                <button id="tab-shapes-btn" class="flex-1 py-3 px-2 text-indigo-400 border-b-2 border-indigo-500 text-center whitespace-nowrap">Shape Lab</button>
+                <button id="tab-physics-btn" class="flex-1 py-3 px-2 text-gray-400 border-b-2 border-transparent hover:text-indigo-300 text-center whitespace-nowrap">Physics & Loads</button>
+                <button id="tab-visuals-btn" class="flex-1 py-3 px-2 text-gray-400 border-b-2 border-transparent hover:text-indigo-300 text-center whitespace-nowrap">Render FX</button>
+                <button id="tab-science-btn" class="flex-1 py-3 px-2 text-gray-400 border-b-2 border-transparent hover:text-indigo-300 text-center whitespace-nowrap">Science Academy</button>
+            </nav>
+
+            <!-- Sidebar Scrollable Sections -->
+            <div class="flex-grow overflow-y-auto p-5 space-y-6">
+
+                <!-- TAB 1: SHAPES -->
+                <div id="tab-shapes" class="space-y-5">
+                    <div class="input-group">
+                        <label for="shape" class="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">Select Geometry Class</label>
+                        <select id="shape" class="w-full p-2.5 rounded-lg border border-[#3a3a5e] bg-[#1e1e35] text-white focus:border-indigo-500 outline-none transition cursor-pointer">
+                            <optgroup label="Curved Solids">
+                                <option value="sphere">Sphere</option>
+                                <option value="hemisphere">Hemisphere</option>
+                                <option value="cylinder">Cylinder</option>
+                                <option value="cone">Cone</option>
+                                <option value="torus">Torus</option>
+                                <option value="ellipsoid">Ellipsoid</option>
+                            </optgroup>
+                            <optgroup label="Prisms & Cuboids">
+                                <option value="cube">Cube</option>
+                                <option value="box" selected>Cuboid (Rectangular Prism)</option>
+                                <option value="prism3">Triangular Prism</option>
+                                <option value="prism5">Pentagonal Prism</option>
+                                <option value="prism6">Hexagonal Prism</option>
+                                <option value="prism7">Heptagonal Prism</option>
+                                <option value="prism8">Octagonal Prism</option>
+                                <option value="prism10">Decagonal Prism</option>
+                            </optgroup>
+                            <optgroup label="Antiprisms">
+                                <option value="antiprism3">Triangular Antiprism</option>
+                                <option value="antiprism4">Square Antiprism</option>
+                                <option value="antiprism5">Pentagonal Antiprism</option>
+                            </optgroup>
+                            <optgroup label="Pyramids & Bipyramids">
+                                <option value="pyramid3">Triangular Pyramid</option>
+                                <option value="pyramid4">Square Pyramid</option>
+                                <option value="pyramid5">Pentagonal Pyramid</option>
+                                <option value="pyramid6">Hexagonal Pyramid</option>
+                                <option value="pyramid7">Heptagonal Pyramid</option>
+                                <option value="pyramid8">Octagonal Pyramid</option>
+                                <option value="bipyramid3">Triangular Bipyramid</option>
+                                <option value="bipyramid4">Square Bipyramid (Octahedron)</option>
+                                <option value="bipyramid5">Pentagonal Bipyramid</option>
+                            </optgroup>
+                            <optgroup label="Platonic, Archimedean, Catalan">
+                                <option value="tetrahedron">Tetrahedron</option>
+                                <option value="octahedron">Octahedron</option>
+                                <option value="dodecahedron">Dodecahedron</option>
+                                <option value="icosahedron">Icosahedron</option>
+                                <option value="cuboctahedron">Cuboctahedron</option>
+                                <option value="trunc_cube">Truncated Cube</option>
+                                <option value="rhombic_dodecahedron">Rhombic Dodecahedron</option>
+                                <option value="deltoidal_icos">Deltoidal Icositetrahedron</option>
+                            </optgroup>
+                            <optgroup label="Architectural & Specialized">
+                                <option value="frustum">Conical Frustum</option>
+                                <option value="pyr_frustum">Pyramidal Frustum (Square)</option>
+                                <option value="oblique_cyl">Oblique Cylinder</option>
+                                <option value="spheroid">Spheroid</option>
+                                <option value="paraboloid">Paraboloid</option>
+                                <option value="hyperboloid">Hyperboloid (1-Sheet)</option>
+                            </optgroup>
+                        </select>
+                    </div>
+
+                    <div class="border-t border-[#2e2e4f] pt-4">
+                        <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Model Scale Adjustments</h3>
+                        <div id="inputs-container" class="space-y-4"></div>
+                    </div>
+                </div>
+
+                <!-- TAB 2: PHYSICS & LOADS -->
+                <div id="tab-physics" class="hidden space-y-5">
+                    <div class="input-group">
+                        <label for="material" class="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">Matter Selection & Core Density</label>
+                        <select id="material" class="w-full p-2.5 rounded-lg border border-[#3a3a5e] bg-[#1e1e35] text-white focus:border-indigo-500 outline-none transition cursor-pointer">
+                            <option value="1.0">Water (1.0 g/cm³)</option>
+                            <option value="0.6">Wood / Pine (0.6 g/cm³)</option>
+                            <option value="2.4">Concrete / Aggregate (2.4 g/cm³)</option>
+                            <option value="2.5" selected>Borosilicate Glass (2.5 g/cm³)</option>
+                            <option value="2.7">Pure Aluminum (2.7 g/cm³)</option>
+                            <option value="7.85">Structural Alloy Steel (7.85 g/cm³)</option>
+                            <option value="8.96">Cold-Rolled Copper (8.96 g/cm³)</option>
+                            <option value="19.32">Refined Gold (19.32 g/cm³)</option>
+                            <option value="custom">Custom Density Profile...</option>
+                        </select>
+                    </div>
+
+                    <div class="input-group id-custom-only" id="custom-density-group" style="display: none;">
+                        <label for="inp-density" class="text-xs font-bold text-gray-400 uppercase block mb-1">Density Threshold (g/cm³)</label>
+                        <input type="number" id="inp-density" value="2.5" min="0.001" step="0.1" class="w-full p-2.5 rounded-lg border border-[#3a3a5e] bg-[#1e1e35] text-white focus:border-indigo-500 outline-none transition">
+                    </div>
+
+                    <div class="input-group">
+                        <label for="gravity" class="text-xs font-bold text-gray-400 uppercase block mb-2">Astro-Gravity Field (g)</label>
+                        <select id="gravity" class="w-full p-2.5 rounded-lg border border-[#3a3a5e] bg-[#1e1e35] text-white focus:border-indigo-500 outline-none transition cursor-pointer">
+                            <option value="9.81">Earth (9.81 m/s²)</option>
+                            <option value="1.62">Moon / Luna (1.62 m/s²)</option>
+                            <option value="3.71">Mars / Ares (3.71 m/s²)</option>
+                            <option value="0">Deep Space Orbit (0.00 m/s²)</option>
+                        </select>
+                    </div>
+
+                    <div class="input-group">
+                        <label for="inp-force" class="text-xs font-bold text-gray-400 uppercase block mb-1">Applied Mechanical Load (Newtons)</label>
+                        <input type="number" id="inp-force" value="100" min="0" step="10" class="w-full p-2.5 rounded-lg border border-[#3a3a5e] bg-[#1e1e35] text-white focus:border-indigo-500 outline-none transition">
+                        <p class="text-[10px] text-gray-500 mt-1">Simulates mechanical point-load downwards onto the geometry's upper boundary.</p>
+                    </div>
+                </div>
+
+                <!-- TAB 3: VISUAL EFFECTS -->
+                <div id="tab-visuals" class="hidden space-y-5">
+                    <div class="bg-[#1e1e35] border border-[#2e2e4f] p-4 rounded-xl space-y-4">
+                        <label class="checkbox-group flex items-center justify-between cursor-pointer">
+                            <span class="text-sm font-medium text-gray-200">Physical Material Skins</span>
+                            <input type="checkbox" id="chk-realistic" class="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500 bg-gray-700">
+                        </label>
+                        <p class="text-xs text-gray-400">Switches the render node from a standard translucent blueprint mesh to real physical colors, metallic properties, and roughness mappings.</p>
+                    </div>
+
+                    <div class="bg-[#1e1e35] border border-[#2e2e4f] p-4 rounded-xl space-y-4">
+                        <label class="checkbox-group flex items-center justify-between cursor-pointer">
+                            <span class="text-sm font-medium text-gray-200">Stress Tensor Vectors</span>
+                            <input type="checkbox" id="chk-force" class="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500 bg-gray-700">
+                        </label>
+                        <p class="text-xs text-gray-400">Maps structural load distributions and mechanical stresses through the object's centroid toward foundation anchors.</p>
+                    </div>
+
+                    <div class="bg-[#1e1e35] border border-[#2e2e4f] p-4 rounded-xl space-y-4">
+                        <label class="checkbox-group flex items-center justify-between cursor-pointer">
+                            <span class="text-sm font-medium text-gray-200">Refractive Photon Tracer</span>
+                            <input type="checkbox" id="chk-photons" class="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500 bg-gray-700">
+                        </label>
+                        <p class="text-xs text-gray-400">Simulates real electromagnetic wave interactions, calculating bounces (reflections) and bending paths (refractions) inside transparent media.</p>
+
+                        <div id="photon-settings" class="space-y-4 pt-3 border-t border-[#2e2e4f]" style="display: none;">
+                            <div>
+                                <div class="flex justify-between text-xs text-gray-400 mb-1">
+                                    <span>Laser Photon Density</span>
+                                    <span id="ray-count-val" class="font-bold text-indigo-300">25</span>
+                                </div>
+                                <input type="range" id="inp-ray-count" min="1" max="100" value="25" class="w-full h-1.5 bg-[#141424] rounded-lg appearance-none cursor-pointer accent-indigo-500">
+                            </div>
+                            <div>
+                                <div class="flex justify-between text-xs text-gray-400 mb-1">
+                                    <span>Spectrometer Wavelength</span>
+                                    <span id="wavelength-val" class="font-bold text-indigo-300">550 nm</span>
+                                </div>
+                                <input type="range" id="inp-wavelength" min="10" max="1500" value="550" class="w-full h-1.5 bg-[#141424] rounded-lg appearance-none cursor-pointer accent-indigo-500">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 4: SCIENCE ACADEMY -->
+                <div id="tab-science" class="hidden space-y-4 text-sm text-gray-300">
+                    <h3 class="font-bold text-indigo-400 border-b border-[#2e2e4f] pb-1.5 text-xs uppercase tracking-wider">The Physics Behind OmniCalc</h3>
+                    <div class="space-y-3 leading-relaxed text-xs text-gray-400">
+                        <p>
+                            <strong class="text-white block mb-0.5">1. Solid State Volume & Mass:</strong>
+                            Volume ($V$) is calculated using exact mathematical coordinate integrations for each unique surface mesh. Using the density ($\rho$) of selected atoms:
+                            <code class="block bg-[#11111d] p-1.5 rounded text-indigo-300 mt-1 font-mono text-center">Mass (M) = V × ρ</code>
+                        </p>
+                        <p>
+                            <strong class="text-white block mb-0.5">2. Force Vectoring:</strong>
+                            Weight Force ($F_{gravity}$) represents gravity acting downwards from the body's center of mass. Added to our manually loaded forces:
+                            <code class="block bg-[#11111d] p-1.5 rounded text-indigo-300 mt-1 font-mono text-center">F_total = (Mass × g) + F_applied</code>
+                        </p>
+                        <p>
+                            <strong class="text-white block mb-0.5">3. Snells Refraction Index:</strong>
+                            If photon rays hit a transparent barrier, their transmission velocity and direction shifts proportional to Snell's Law ($n_1 \sin \theta_1 = n_2 \sin \theta_2$).
+                        </p>
+                        <p>
+                            <strong class="text-white block mb-0.5">4. Mechanical Ground Stress:</strong>
+                            Normal Force representing standard static reaction forces pushes upwards directly opposing all gravitational and load stresses.
+                        </p>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Dynamic Telemetry Report card -->
+            <div class="p-5 border-t border-[#2e2e4f] bg-[#121223] space-y-3 shrink-0">
+                <h3 class="text-xs font-bold text-indigo-300 uppercase tracking-widest flex items-center justify-between">
+                    <span>Active Telemetry</span>
+                    <span class="text-[10px] text-gray-500 font-mono">LIVE</span>
+                </h3>
+                
+                <div class="grid grid-cols-2 gap-3 text-xs">
+                    <div class="bg-[#1a1a30] p-2.5 rounded-lg border border-[#252542]">
+                        <span class="text-gray-400 block mb-0.5 text-[10px] uppercase">Volume</span>
+                        <span id="res-v" class="font-bold text-white text-sm">0.00 cm³</span>
+                        <span id="form-v" class="text-[9px] text-gray-500 font-mono block mt-1"></span>
+                    </div>
+                    <div class="bg-[#1a1a30] p-2.5 rounded-lg border border-[#252542]">
+                        <span class="text-gray-400 block mb-0.5 text-[10px] uppercase">Surface Area</span>
+                        <span id="res-sa" class="font-bold text-white text-sm">0.00 cm²</span>
+                        <span id="form-sa" class="text-[9px] text-gray-500 font-mono block mt-1"></span>
+                    </div>
+                    <div class="bg-[#1a1a30] p-2.5 rounded-lg border border-[#252542]">
+                        <span class="text-gray-400 block mb-0.5 text-[10px] uppercase">Mass (Weight)</span>
+                        <span id="res-m" class="font-bold text-emerald-400 text-sm">0.00 g</span>
+                        <span id="form-m" class="text-[9px] text-gray-500 font-mono block mt-1">M = V × ρ</span>
+                    </div>
+                    <div class="bg-[#1a1a30] p-2.5 rounded-lg border border-[#252542]">
+                        <span class="text-gray-400 block mb-0.5 text-[10px] uppercase">Total Force</span>
+                        <span id="res-total-force" class="font-bold text-rose-400 text-sm">0.00 N</span>
+                        <span id="form-f" class="text-[9px] text-gray-500 font-mono block mt-1">F = Mg + Applied</span>
+                    </div>
+                </div>
+
+                <div class="flex gap-2 pt-2">
+                    <span class="text-[10px] text-gray-400 flex-1">Gravity load: <span id="res-weight" class="text-white font-semibold">0.00 N</span></span>
+                    <button id="export-report-btn" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[10px] px-3 py-1 rounded transition flex items-center gap-1">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"></path>
+                        </svg>
+                        Report
+                    </button>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Viewport Render Area -->
+        <div id="canvas-container">
+            <!-- 2D Overlay for Floating Measurement Labels -->
+            <div id="labels-container"></div>
+            
+            <!-- Quick View Control Buttons floating on top of canvas -->
+            <div class="absolute bottom-5 right-5 flex items-center gap-2 z-10">
+                <button id="btn-reset-cam" class="bg-[#16162a]/90 backdrop-blur border border-[#2e2e4f] text-xs font-semibold text-gray-200 px-3.5 py-2 rounded-lg shadow-lg hover:bg-indigo-600 hover:text-white transition flex items-center gap-1.5">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"></path>
+                    </svg>
+                    Reset Camera
+                </button>
+            </div>
+        </div>
+
+    </main>
+
+    <script>
+        function initializeCalculator() {
+            // --- CORE DOM ELEMENTS ---
+            const shapeSelect = document.getElementById('shape');
+            const inputsContainer = document.getElementById('inputs-container');
+            const materialSelect = document.getElementById('material');
+            const customDensityGroup = document.getElementById('custom-density-group');
+            const customDensityInput = document.getElementById('inp-density');
+            const gravitySelect = document.getElementById('gravity');
+            const forceInput = document.getElementById('inp-force');
+            const presetSelect = document.getElementById('preset-manager');
+            const exportReportBtn = document.getElementById('export-report-btn');
+            const resetCamBtn = document.getElementById('btn-reset-cam');
+            
+            const chkRealistic = document.getElementById('chk-realistic');
+            const chkForce = document.getElementById('chk-force');
+            const chkPhotons = document.getElementById('chk-photons');
+            const photonSettings = document.getElementById('photon-settings');
+            const inpRayCount = document.getElementById('inp-ray-count');
+            const inpWavelength = document.getElementById('inp-wavelength');
+            const rayCountVal = document.getElementById('ray-count-val');
+            const wavelengthVal = document.getElementById('wavelength-val');
+            
+            // Layout sidebar tab elements
+            const tabShapesBtn = document.getElementById('tab-shapes-btn');
+            const tabPhysicsBtn = document.getElementById('tab-physics-btn');
+            const tabVisualsBtn = document.getElementById('tab-visuals-btn');
+            const tabScienceBtn = document.getElementById('tab-science-btn');
+            
+            const tabShapes = document.getElementById('tab-shapes');
+            const tabPhysics = document.getElementById('tab-physics');
+            const tabVisuals = document.getElementById('tab-visuals');
+            const tabScience = document.getElementById('tab-science');
+
+            // --- TAB SWITCHER LOGIC ---
+            function switchTab(activeBtn, activeSection) {
+                [tabShapesBtn, tabPhysicsBtn, tabVisualsBtn, tabScienceBtn].forEach(btn => {
+                    btn.classList.remove('text-indigo-400', 'border-indigo-500');
+                    btn.classList.add('text-gray-400', 'border-transparent');
+                });
+                [tabShapes, tabPhysics, tabVisuals, tabScience].forEach(sec => sec.classList.add('hidden'));
+                
+                activeBtn.classList.remove('text-gray-400', 'border-transparent');
+                activeBtn.classList.add('text-indigo-400', 'border-indigo-500');
+                activeSection.classList.remove('hidden');
+            }
+
+            tabShapesBtn.addEventListener('click', () => switchTab(tabShapesBtn, tabShapes));
+            tabPhysicsBtn.addEventListener('click', () => switchTab(tabPhysicsBtn, tabPhysics));
+            tabVisualsBtn.addEventListener('click', () => switchTab(tabVisualsBtn, tabVisuals));
+            tabScienceBtn.addEventListener('click', () => switchTab(tabScienceBtn, tabScience));
+
+            // Setup global sandbox parameters
+            let params = { l: 6, w: 4, h: 5, r: 4, R: 6, r2: 2, e: 4, e2: 2, a: 5, c: 3, o: 2, density: 2.5, gravity: 9.81, force: 100, totalForce: 100 };
+
+            function buildInput(id, label, value) {
+                return `<div class="input-group">
+                            <label class="text-xs text-gray-400 block mb-1 font-medium">${label}</label>
+                            <input type="number" id="${id}" value="${value}" min="0.1" step="0.1" class="w-full p-2 rounded-lg border border-[#3a3a5e] bg-[#1e1e35] text-white focus:border-indigo-500 outline-none transition">
+                        </div>`;
+            }
+
+            function updateInputsUI() {
+                const shape = shapeSelect.value;
+                let html = '';
+                
+                if (shape === 'box') {
+                    html += buildInput('inp-l', 'Length (cm)', params.l) + buildInput('inp-w', 'Width (cm)', params.w) + buildInput('inp-h', 'Height (cm)', params.h);
+                } else if (['sphere', 'hemisphere'].includes(shape)) {
+                    html += buildInput('inp-r', 'Radius (R) (cm)', params.r);
+                } else if (['cylinder', 'cone', 'paraboloid'].includes(shape)) {
+                    html += buildInput('inp-r', 'Radius (R) (cm)', params.r) + buildInput('inp-h', 'Height (H) (cm)', params.h);
+                } else if (shape === 'ellipsoid' || shape === 'spheroid') {
+                    html += buildInput('inp-a', 'Equatorial Axis A (cm)', params.a) + buildInput('inp-c', 'Polar Axis C (cm)', params.c);
+                } else if (shape === 'torus') {
+                    html += buildInput('inp-R', 'Major Axis R (cm)', params.R) + buildInput('inp-r', 'Tube Axis r (cm)', params.r);
+                } else if (shape === 'frustum') {
+                    html += buildInput('inp-R', 'Base Radius R (cm)', params.R) + buildInput('inp-r2', 'Top Radius r (cm)', params.r2) + buildInput('inp-h', 'Height H (cm)', params.h);
+                } else if (shape === 'pyr_frustum') {
+                    html += buildInput('inp-e', 'Base Side L1 (cm)', params.e) + buildInput('inp-e2', 'Top Side L2 (cm)', params.e2) + buildInput('inp-h', 'Height H (cm)', params.h);
+                } else if (shape === 'hyperboloid') {
+                    html += buildInput('inp-R', 'Base Radius R (cm)', params.R) + buildInput('inp-r2', 'Center Neck Radius r (cm)', params.r2) + buildInput('inp-h', 'Height H (cm)', params.h);
+                } else if (shape === 'oblique_cyl') {
+                    html += buildInput('inp-r', 'Radius R (cm)', params.r) + buildInput('inp-h', 'Height H (cm)', params.h) + buildInput('inp-o', 'Horizontal Offset (cm)', params.o);
+                } else if (shape.startsWith('prism') || shape.startsWith('pyramid') || shape.startsWith('antiprism') || shape.startsWith('bipyramid')) {
+                    html += buildInput('inp-e', 'Base Edge Length E (cm)', params.e) + buildInput('inp-h', 'Vertical Height H (cm)', params.h);
+                } else {
+                    html += buildInput('inp-e', 'Edge Length E (cm)', params.e);
+                }
+                
+                inputsContainer.innerHTML = html;
+
+                inputsContainer.querySelectorAll('input').forEach(input => {
+                    input.addEventListener('input', (e) => {
+                        const val = parseFloat(e.target.value) || 0.1;
+                        if (e.target.id === 'inp-l') params.l = val;
+                        if (e.target.id === 'inp-w') params.w = val;
+                        if (e.target.id === 'inp-h') params.h = val;
+                        if (e.target.id === 'inp-r') params.r = val;
+                        if (e.target.id === 'inp-R') params.R = val;
+                        if (e.target.id === 'inp-r2') params.r2 = val;
+                        if (e.target.id === 'inp-e') params.e = val;
+                        if (e.target.id === 'inp-e2') params.e2 = val;
+                        if (e.target.id === 'inp-a') params.a = val;
+                        if (e.target.id === 'inp-c') params.c = val;
+                        if (e.target.id === 'inp-o') params.o = val;
+                        calculateMath();
+                        if (typeof window.update3DScene === 'function') window.update3DScene();
+                    });
+                });
+                calculateMath();
+                if (typeof window.update3DScene === 'function') window.update3DScene();
+            }
+
+            function calculateMath() {
+                const shape = shapeSelect.value;
+                
+                const l = Math.max(params.l || 0.1, 0.1);
+                const w = Math.max(params.w || 0.1, 0.1);
+                const h = Math.max(params.h || 0.1, 0.1);
+                const r = Math.max(params.r || 0.1, 0.1);
+                const R = Math.max(params.R || 0.1, 0.1);
+                const r2 = Math.max(params.r2 || 0.1, 0.1);
+                const e = Math.max(params.e || 0.1, 0.1);
+                const e2 = Math.max(params.e2 || 0.1, 0.1);
+                const a = Math.max(params.a || 0.1, 0.1);
+                const c = Math.max(params.c || 0.1, 0.1);
+                const o = params.o || 0;
+
+                let vol = 0, sa = 0, fVol = '', fSa = '';
+
+                const polyArea = (n, edge) => (n * edge * edge) / (4 * Math.tan(Math.PI / n));
+                const polyApothem = (n, edge) => edge / (2 * Math.tan(Math.PI / n));
+
+                if (shape === 'box') {
+                    vol = l * w * h; sa = 2 * (l*w + l*h + w*h); fVol = "V = lwh"; fSa = "SA = 2(lw+lh+wh)";
+                } else if (shape === 'cube') {
+                    vol = e * e * e; sa = 6 * e * e; fVol = "V = e³"; fSa = "SA = 6e²";
+                } else if (shape === 'sphere') {
+                    vol = (4/3) * Math.PI * Math.pow(r, 3); sa = 4 * Math.PI * Math.pow(r, 2); fVol = "V = 4/3πr³"; fSa = "SA = 4πr²";
+                } else if (shape === 'hemisphere') {
+                    vol = (2/3) * Math.PI * Math.pow(r, 3); sa = 3 * Math.PI * Math.pow(r, 2); fVol = "V = 2/3πr³"; fSa = "SA = 3πr²";
+                } else if (shape === 'cylinder') {
+                    vol = Math.PI * Math.pow(r, 2) * h; sa = 2 * Math.PI * r * h + 2 * Math.PI * Math.pow(r, 2); fVol = "V = πr²h"; fSa = "SA = 2πrh+2πr²";
+                } else if (shape === 'cone') {
+                    vol = (1/3) * Math.PI * Math.pow(r, 2) * h; sa = Math.PI * r * (r + Math.sqrt(h*h + r*r)); fVol = "V = 1/3πr²h"; fSa = "SA = πr(r+√(h²+r²))";
+                } else if (shape === 'frustum') {
+                    vol = (1/3) * Math.PI * h * (R*R + R*r2 + r2*r2);
+                    sa = Math.PI * (R + r2) * Math.sqrt(Math.pow(R - r2, 2) + h*h) + Math.PI*R*R + Math.PI*r2*r2;
+                    fVol = "V = 1/3πh(R²+Rr+r²)"; fSa = "SA = π(R+r)×Slant + Bases";
+                } else if (shape === 'pyr_frustum') {
+                    vol = (1/3) * h * (e*e + e2*e2 + e*e2);
+                    const slant = Math.sqrt(Math.pow((e-e2)/2, 2) + h*h);
+                    sa = e*e + e2*e2 + 4 * ((e+e2)/2 * slant);
+                    fVol = "V = 1/3h(A1+A2+√(A1A2))"; fSa = "SA = Bases + Lateral Area";
+                } else if (shape === 'oblique_cyl') {
+                    vol = Math.PI * r * r * h; sa = 2 * Math.PI * r * r + 2 * Math.PI * r * Math.sqrt(h*h + o*o); fVol = "V = πr²h"; fSa = "SA ≈ 2πr² + 2πr×Slant";
+                } else if (shape === 'ellipsoid' || shape === 'spheroid') {
+                    vol = (4/3) * Math.PI * a * a * c;
+                    const p = 1.6075; 
+                    sa = 4 * Math.PI * Math.pow((2*Math.pow(a*c, p) + Math.pow(a*a, p)) / 3, 1/p);
+                    fVol = "V = 4/3πa²c"; fSa = "SA ≈ 4π(((ac)^p+(ac)^p+(a²)^p)/3)^(1/p)";
+                } else if (shape === 'paraboloid') {
+                    vol = 0.5 * Math.PI * r * r * h; sa = (Math.PI * r) / (6 * h * h) * (Math.pow(r*r + 4*h*h, 1.5) - Math.pow(r, 3)); fVol = "V = 1/2πr²h"; fSa = "SA = πr/6h² ((r²+4h²)^1.5 - r³)";
+                } else if (shape === 'hyperboloid') {
+                    vol = (Math.PI / 3) * h * (2 * r2*r2 + R*R); sa = 2 * Math.PI * R * h + 2 * Math.PI * r2 * r2; fVol = "V = π/3×h(2r²+R²)"; fSa = "SA requires complex elliptic integrals";
+                } else if (shape === 'torus') {
+                    vol = 2 * Math.pow(Math.PI, 2) * R * r * r; sa = 4 * Math.pow(Math.PI, 2) * R * r; fVol = "V = 2π²Rr²"; fSa = "SA = 4π²Rr";
+                } else if (shape.startsWith('prism')) {
+                    const n = parseInt(shape.replace('prism', '')) || 3;
+                    const area = polyArea(n, e); vol = area * h; sa = 2 * area + n * e * h; fVol = "V = Area×h"; fSa = "SA = 2×Area + Peri×h";
+                } else if (shape.startsWith('pyramid')) {
+                    const n = parseInt(shape.replace('pyramid', '')) || 3;
+                    const area = polyArea(n, e); const slant = Math.sqrt(h*h + Math.pow(polyApothem(n, e), 2));
+                    vol = (1/3) * area * h; sa = area + (n * e * slant) / 2; fVol = "V = 1/3×Area×h"; fSa = "SA = Area + 1/2×Peri×Slant";
+                } else if (shape.startsWith('bipyramid')) {
+                    const n = parseInt(shape.replace('bipyramid', '')) || 3;
+                    const area = polyArea(n, e); const slant = Math.sqrt(Math.pow(h/2, 2) + Math.pow(polyApothem(n, e), 2));
+                    vol = (1/3) * area * h; sa = n * e * slant; fVol = "V = 1/3×Area×h"; fSa = "SA = n×Edge×Slant";
+                } else if (shape.startsWith('antiprism')) {
+                    const n = parseInt(shape.replace('antiprism', '')) || 3;
+                    const area = polyArea(n, e); vol = area * h; const slant = Math.sqrt(h*h + Math.pow(e/2, 2)); sa = 2 * area + n * e * slant;
+                    fVol = "V ≈ Area×h (Prismoidal)"; fSa = "SA = 2×Area + Triangles";
+                } else if (shape === 'tetrahedron') {
+                    vol = Math.pow(e, 3) / (6 * Math.SQRT2); sa = Math.sqrt(3) * e * e; fVol = "V = e³/(6√2)"; fSa = "SA = √3e²";
+                } else if (shape === 'octahedron') {
+                    vol = (Math.SQRT2 / 3) * Math.pow(e, 3); sa = 2 * Math.sqrt(3) * e * e; fVol = "V = (√2/3)e³"; fSa = "SA = 2√3e²";
+                } else if (shape === 'dodecahedron') {
+                    vol = ((15 + 7 * Math.sqrt(5)) / 4) * Math.pow(e, 3); sa = 3 * Math.sqrt(25 + 10 * Math.sqrt(5)) * e * e; fVol = "V = ((15+7√5)/4)e³"; fSa = "SA = 3√(25+10√5)e²";
+                } else if (shape === 'icosahedron') {
+                    vol = (5/12) * (3 + Math.sqrt(5)) * Math.pow(e, 3); sa = 5 * Math.sqrt(3) * e * e; fVol = "V = 5/12(3+√5)e³"; fSa = "SA = 5√3e²";
+                } else if (shape === 'cuboctahedron') {
+                    vol = (5/3) * Math.SQRT2 * Math.pow(e, 3); sa = (6 + 2*Math.sqrt(3)) * e * e; fVol = "V = (5/3)√2e³"; fSa = "SA = (6+2√3)e²";
+                } else if (shape === 'trunc_cube') {
+                    vol = (1/3) * (21 + 14*Math.SQRT2) * Math.pow(e, 3); sa = 2 * (6 + 6*Math.SQRT2 + Math.sqrt(3)) * e * e; fVol = "V = 1/3(21+14√2)e³"; fSa = "SA = 2(6+6√2+√3)e²";
+                } else if (shape === 'rhombic_dodecahedron') {
+                    vol = (16/9) * Math.sqrt(3) * Math.pow(e, 3); sa = 8 * Math.SQRT2 * e * e; fVol = "V = (16/9)√3e³"; fSa = "SA = 8√2e²";
+                } else if (shape === 'deltoidal_icos') {
+                    vol = Math.sqrt(222 + 98*Math.SQRT2) * Math.pow(e, 3); sa = 6 * Math.sqrt(61 + 38*Math.SQRT2) * e * e; fVol = "V = √(222+98√2)e³"; fSa = "SA = 6√(61+38√2)e²";
+                }
+
+                const mass = vol * params.density;
+                let massDisplay = mass.toFixed(2) + " g";
+                if (mass >= 1000) massDisplay = (mass / 1000).toFixed(2) + " kg";
+
+                const massKg = mass / 1000; 
+                const weightForce = massKg * params.gravity; 
+                const totalForce = weightForce + params.force;
+                
+                params.totalForce = totalForce;
+
+                document.getElementById('res-v').innerText = vol.toFixed(2) + " cm³";
+                document.getElementById('res-sa').innerText = sa.toFixed(2) + " cm²";
+                document.getElementById('res-m').innerText = massDisplay;
+                document.getElementById('res-weight').innerText = weightForce.toFixed(2) + " N";
+                document.getElementById('res-total-force').innerText = totalForce.toFixed(2) + " N";
+                document.getElementById('form-v').innerText = fVol;
+                document.getElementById('form-sa').innerText = fSa;
+            }
+
+            // Presets Handler
+            presetSelect.addEventListener('change', (e) => {
+                const preset = e.target.value;
+                if (preset === 'mars-steel') {
+                    shapeSelect.value = 'box';
+                    params.l = 8.0; params.w = 4.0; params.h = 12.0;
+                    materialSelect.value = '7.85'; // Steel
+                    customDensityGroup.style.display = 'none';
+                    params.density = 7.85;
+                    gravitySelect.value = '3.71'; // Mars
+                    params.gravity = 3.71;
+                    forceInput.value = '500';
+                    params.force = 500;
+                    chkRealistic.checked = true;
+                    chkForce.checked = true;
+                    chkPhotons.checked = false;
+                } else if (preset === 'deepspace-glass') {
+                    shapeSelect.value = 'prism3'; // Triangular prism
+                    params.e = 6.0; params.h = 10.0;
+                    materialSelect.value = '2.5'; // Glass
+                    customDensityGroup.style.display = 'none';
+                    params.density = 2.5;
+                    gravitySelect.value = '0'; // Deep Space
+                    params.gravity = 0;
+                    forceInput.value = '0';
+                    params.force = 0;
+                    chkRealistic.checked = false;
+                    chkForce.checked = false;
+                    chkPhotons.checked = true;
+                    inpRayCount.value = 50;
+                    inpWavelength.value = 450; // Blue
+                } else if (preset === 'earth-water') {
+                    shapeSelect.value = 'sphere';
+                    params.r = 8.0;
+                    materialSelect.value = '1.0'; // Water
+                    customDensityGroup.style.display = 'none';
+                    params.density = 1.0;
+                    gravitySelect.value = '9.81'; // Earth
+                    params.gravity = 9.81;
+                    forceInput.value = '200';
+                    params.force = 200;
+                    chkRealistic.checked = true;
+                    chkForce.checked = false;
+                    chkPhotons.checked = true;
+                    inpRayCount.value = 35;
+                    inpWavelength.value = 550; // Green
+                } else if (preset === 'moon-gold') {
+                    shapeSelect.value = 'cube';
+                    params.e = 5.0;
+                    materialSelect.value = '19.32'; // Gold
+                    customDensityGroup.style.display = 'none';
+                    params.density = 19.32;
+                    gravitySelect.value = '1.62'; // Moon
+                    params.gravity = 1.62;
+                    forceInput.value = '50';
+                    params.force = 50;
+                    chkRealistic.checked = true;
+                    chkForce.checked = true;
+                    chkPhotons.checked = false;
+                } else {
+                    // Default values
+                    shapeSelect.value = 'box';
+                    params.l = 6; params.w = 4; params.h = 5;
+                    materialSelect.value = '2.5';
+                    customDensityGroup.style.display = 'none';
+                    params.density = 2.5;
+                    gravitySelect.value = '9.81';
+                    params.gravity = 9.81;
+                    forceInput.value = '100';
+                    params.force = 100;
+                    chkRealistic.checked = false;
+                    chkForce.checked = false;
+                    chkPhotons.checked = false;
+                }
+                
+                photonSettings.style.display = chkPhotons.checked ? 'flex' : 'none';
+                rayCountVal.innerText = inpRayCount.value;
+                wavelengthVal.innerText = getWavelengthLabel(parseInt(inpWavelength.value));
+                
+                updateInputsUI();
+            });
+
+            // Generate physical downloadable .txt report
+            exportReportBtn.addEventListener('click', () => {
+                const shapeName = shapeSelect.options[shapeSelect.selectedIndex].text;
+                const matName = materialSelect.options[materialSelect.selectedIndex].text;
+                const gravityName = gravitySelect.options[gravitySelect.selectedIndex].text;
+                const volTxt = document.getElementById('res-v').innerText;
+                const saTxt = document.getElementById('res-sa').innerText;
+                const massTxt = document.getElementById('res-m').innerText;
+                const weightTxt = document.getElementById('res-weight').innerText;
+                const totalForceTxt = document.getElementById('res-total-force').innerText;
+
+                const reportContent = `===================================================
+OMNICALC 3D GEOMETRY & PHYSICS REPORT
+Generated: ${new Date().toLocaleString()}
+===================================================
+[GEOMETRY SETTINGS]
+* Shape Profile   : ${shapeName}
+* Dimensions Used : ${JSON.stringify(params, ['l','w','h','r','R','r2','e','e2','a','c','o'])}
+
+[PHYSICAL PROFILE]
+* Selected Matter : ${matName}
+* Base Density    : ${params.density} g/cm³
+* Astro-Gravity   : ${gravityName}
+
+[CALCULATED TELEMETRY]
+* Solid Volume    : ${volTxt}
+* Surface Area    : ${saTxt}
+* Net Mass        : ${massTxt}
+* Gravity Weight  : ${weightTxt}
+* Mechanical Load : ${params.force} N
+* Net Force Vector: ${totalForceTxt}
+
+===================================================
+Thank you for computing with OmniCalc 3D.
+===================================================`;
+
+                const blob = new Blob([reportContent], { type: 'text/plain' });
+                const anchor = document.createElement('a');
+                anchor.download = `OmniCalc_Report_${shapeName.replace(/\s+/g, '_')}.txt`;
+                anchor.href = window.URL.createObjectURL(blob);
+                anchor.click();
+            });
+
+            shapeSelect.addEventListener('change', updateInputsUI);
+            
+            materialSelect.addEventListener('change', (e) => {
+                if (e.target.value === 'custom') {
+                    customDensityGroup.style.display = 'flex';
+                    params.density = parseFloat(customDensityInput.value) || 1.0;
+                } else {
+                    customDensityGroup.style.display = 'none';
+                    params.density = parseFloat(e.target.value) || 1.0;
+                }
+                calculateMath();
+                if (typeof window.update3DScene === 'function') window.update3DScene();
+            });
+
+            customDensityInput.addEventListener('input', (e) => { params.density = parseFloat(e.target.value) || 1.0; calculateMath(); });
+            gravitySelect.addEventListener('change', (e) => { params.gravity = parseFloat(e.target.value) || 0; calculateMath(); if(typeof window.update3DScene==='function') window.update3DScene();});
+            forceInput.addEventListener('input', (e) => { params.force = parseFloat(e.target.value) || 0; calculateMath(); if(typeof window.update3DScene==='function') window.update3DScene();});
+            
+            chkRealistic.addEventListener('change', () => { if (typeof window.update3DScene === 'function') window.update3DScene(); });
+            chkForce.addEventListener('change', () => { if (typeof window.update3DScene === 'function') window.update3DScene(); });
+            
+            chkPhotons.addEventListener('change', (e) => { 
+                photonSettings.style.display = e.target.checked ? 'flex' : 'none';
+                if (typeof window.update3DScene === 'function') window.update3DScene(); 
+            });
+            
+            inpRayCount.addEventListener('input', (e) => {
+                rayCountVal.innerText = e.target.value;
+                if (typeof window.update3DScene === 'function') window.update3DScene();
+            });
+            
+            function getWavelengthLabel(nm) {
+                if (nm < 100) return `${nm} nm (Extreme UV / X-Ray)`;
+                if (nm < 380) return `${nm} nm (Ultraviolet)`;
+                if (nm < 450) return `${nm} nm (Visible Violet)`;
+                if (nm < 485) return `${nm} nm (Visible Blue)`;
+                if (nm < 500) return `${nm} nm (Visible Cyan)`;
+                if (nm < 565) return `${nm} nm (Visible Green)`;
+                if (nm < 590) return `${nm} nm (Visible Yellow)`;
+                if (nm < 625) return `${nm} nm (Visible Orange)`;
+                if (nm <= 750) return `${nm} nm (Visible Red)`;
+                if (nm < 1000) return `${nm} nm (Near Infrared)`;
+                return `${nm} nm (Infrared)`;
+            }
+
+            inpWavelength.addEventListener('input', (e) => {
+                const nm = parseInt(e.target.value) || 550;
+                wavelengthVal.innerText = getWavelengthLabel(nm);
+                if (typeof window.update3DScene === 'function') window.update3DScene();
+            });
+
+            updateInputsUI();
+
+            // --- 2. 3D ENGINE SETUP ---
+            let scene, camera, renderer, shapeGroup, visualGroup, material, lineMaterial, labelsContainer, activeLabels = [];
+            let photonLines = []; 
+            
+            const materialProps = {
+                '1.0': { color: 0x3b82f6, opacity: 0.4, transparent: true, metalness: 0.1, roughness: 0.1 }, // Water
+                '0.6': { color: 0x8b5a2b, opacity: 1.0, transparent: false, metalness: 0.0, roughness: 0.9 }, // Wood
+                '2.4': { color: 0x888888, opacity: 1.0, transparent: false, metalness: 0.0, roughness: 1.0 }, // Concrete
+                '2.5': { color: 0xe0f2fe, opacity: 0.3, transparent: true, metalness: 0.2, roughness: 0.05 }, // Glass
+                '2.7': { color: 0xd1d5db, opacity: 1.0, transparent: false, metalness: 0.7, roughness: 0.4 }, // Aluminum
+                '7.85': { color: 0x6b7280, opacity: 1.0, transparent: false, metalness: 0.8, roughness: 0.3 }, // Steel
+                '8.96': { color: 0xb87333, opacity: 1.0, transparent: false, metalness: 0.9, roughness: 0.2 }, // Copper
+                '19.32':{ color: 0xffd700, opacity: 1.0, transparent: false, metalness: 1.0, roughness: 0.1 }, // Gold
+                'custom':{ color: 0x4f46e5, opacity: 0.85, transparent: true, metalness: 0.2, roughness: 0.2 } // Default
+            };
+            
+            function init3D() {
+                const container = document.getElementById('canvas-container');
+                labelsContainer = document.getElementById('labels-container');
+                
+                const width = container.clientWidth || window.innerWidth - 340;
+                const height = container.clientHeight || window.innerHeight;
+                
+                scene = new THREE.Scene();
+                camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
+                camera.position.set(15, 12, 20);
+                camera.lookAt(0, 0, 0);
+
+                renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+                renderer.setSize(width, height);
+                renderer.setPixelRatio(window.devicePixelRatio || 1);
+                container.appendChild(renderer.domElement);
+
+                scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+                const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+                dirLight.position.set(10, 20, 10);
+                scene.add(dirLight);
+
+                const gridHelper = new THREE.GridHelper(30, 30, 0x444444, 0x222222);
+                gridHelper.position.y = -5;
+                scene.add(gridHelper);
+
+                shapeGroup = new THREE.Group();
+                scene.add(shapeGroup);
+                
+                visualGroup = new THREE.Group();
+                scene.add(visualGroup);
+
+                material = new THREE.MeshStandardMaterial({ 
+                    color: 0x4f46e5, transparent: true, opacity: 0.85, roughness: 0.2, metalness: 0.2, side: THREE.DoubleSide
+                });
+                lineMaterial = new THREE.LineBasicMaterial({ color: 0xffcc00, linewidth: 3, depthTest: false });
+
+                // Reset Camera Listener
+                resetCamBtn.addEventListener('click', () => {
+                    camera.position.set(15, 12, 20);
+                    camera.lookAt(0, 0, 0);
+                    shapeGroup.rotation.set(0, 0, 0);
+                    visualGroup.rotation.set(0, 0, 0);
+                });
+
+                let isDragging = false;
+                let previousMousePosition = { x: 0, y: 0 };
+
+                const onPointerDown = (e) => {
+                    if (e.target !== renderer.domElement) return;
+                    isDragging = true;
+                    previousMousePosition = { x: e.touches ? e.touches[0].clientX : e.clientX, y: e.touches ? e.touches[0].clientY : e.clientY };
+                };
+                const onPointerUp = () => isDragging = false;
+                const onPointerMove = (e) => {
+                    if (isDragging) {
+                        const currentX = e.touches ? e.touches[0].clientX : e.clientX;
+                        const currentY = e.touches ? e.touches[0].clientY : e.clientY;
+                        shapeGroup.rotation.y += (currentX - previousMousePosition.x) * 0.01;
+                        visualGroup.rotation.y = shapeGroup.rotation.y; 
+                        shapeGroup.rotation.x += (currentY - previousMousePosition.y) * 0.01;
+                        visualGroup.rotation.x = shapeGroup.rotation.x;
+                        previousMousePosition = { x: currentX, y: currentY };
+                    }
+                };
+
+                container.addEventListener('mousedown', onPointerDown);
+                window.addEventListener('mouseup', onPointerUp);
+                container.addEventListener('mousemove', onPointerMove);
+                container.addEventListener('touchstart', onPointerDown, {passive: true});
+                window.addEventListener('touchend', onPointerUp);
+                container.addEventListener('touchmove', onPointerMove, {passive: true});
+                container.addEventListener('wheel', (e) => {
+                    camera.position.z += e.deltaY * 0.02;
+                    camera.position.z = Math.max(5, Math.min(camera.position.z, 50));
+                }, {passive: true});
+
+                if (window.ResizeObserver) {
+                    const resizeObserver = new ResizeObserver(entries => {
+                        for (let entry of entries) {
+                            const newWidth = entry.contentRect.width;
+                            const newHeight = entry.contentRect.height;
+                            if (newWidth === 0 || newHeight === 0) continue;
+                            
+                            camera.aspect = newWidth / newHeight;
+                            camera.updateProjectionMatrix();
+                            renderer.setSize(newWidth, newHeight);
+                        }
+                    });
+                    resizeObserver.observe(container);
+                } else {
+                    window.addEventListener('resize', () => {
+                        if (container.clientWidth === 0) return;
+                        camera.aspect = container.clientWidth / container.clientHeight;
+                        camera.updateProjectionMatrix();
+                        renderer.setSize(container.clientWidth, container.clientHeight);
+                    });
+                }
+
+                window.update3DScene = drawShape;
+                drawShape();
+                animate();
+            }
+
+            function addLabel(text, position) {
+                const el = document.createElement('div');
+                el.className = 'measurement-label';
+                el.innerText = text;
+                labelsContainer.appendChild(el);
+                activeLabels.push({ element: el, position: position });
+            }
+
+            function createLine(start, end) {
+                if (!start || !end || isNaN(start.x) || isNaN(start.y) || isNaN(start.z) || isNaN(end.x) || isNaN(end.y) || isNaN(end.z)) {
+                    return; 
+                }
+                shapeGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([start, end]), lineMaterial));
+            }
+            
+            function applyMaterialLook() {
+                if (chkRealistic.checked) {
+                    let selectedDensity = materialSelect.value;
+                    if (selectedDensity === 'custom') selectedDensity = 'custom';
+                    const props = materialProps[selectedDensity] || materialProps['custom'];
+                    
+                    material.color.setHex(props.color);
+                    material.metalness = props.metalness;
+                    material.roughness = props.roughness;
+                    material.opacity = props.opacity;
+                    material.transparent = props.transparent;
+                } else {
+                    material.color.setHex(0x4f46e5);
+                    material.metalness = 0.2;
+                    material.roughness = 0.2;
+                    material.transparent = true;
+                    material.opacity = (chkPhotons.checked || chkForce.checked) ? 0.4 : 0.85;
+                }
+            }
+
+            function buildPhysicsVisuals(mesh) {
+                while(visualGroup.children.length > 0){ visualGroup.remove(visualGroup.children[0]); }
+                photonLines = [];
+
+                mesh.geometry.computeBoundingBox();
+                const bbox = mesh.geometry.boundingBox;
+                let topY = 2;
+                let botY = -2;
+                let radius = 1;
+                if (bbox && bbox.max && bbox.min) {
+                    if (typeof bbox.max.y === 'number' && !isNaN(bbox.max.y)) topY = bbox.max.y;
+                    if (typeof bbox.min.y === 'number' && !isNaN(bbox.min.y)) botY = bbox.min.y;
+                    const rx = (typeof bbox.max.x === 'number' && !isNaN(bbox.max.x)) ? Math.abs(bbox.max.x) : 1;
+                    const rz = (typeof bbox.max.z === 'number' && !isNaN(bbox.max.z)) ? Math.abs(bbox.max.z) : 1;
+                    radius = Math.max(rx, rz, 1);
+                }
+
+                // --- FORCE DISTRIBUTION VISUALS ---
+                if (chkForce.checked) {
+                    const totalForce = params.totalForce || 100;
+                    if (totalForce > 0) {
+                        const forceArrow = new THREE.ArrowHelper(
+                            new THREE.Vector3(0, -1, 0), 
+                            new THREE.Vector3(0, topY + 3, 0), 
+                            3, 0xff3333, 0.8, 0.4
+                        );
+                        visualGroup.add(forceArrow);
+
+                        const stressMaterial = new THREE.LineDashedMaterial({ color: 0xffaa00, dashSize: 0.3, gapSize: 0.2, linewidth: 2 });
+                        const numLines = 6;
+                        for (let i = 0; i < numLines; i++) {
+                            const angle = (i / numLines) * Math.PI * 2;
+                            const spreadX = Math.cos(angle) * (radius * 0.8);
+                            const spreadZ = Math.sin(angle) * (radius * 0.8);
+                            
+                            const stressLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([
+                                new THREE.Vector3(0, topY, 0), new THREE.Vector3(spreadX, botY, spreadZ)
+                            ]), stressMaterial);
+                            stressLine.computeLineDistances();
+                            visualGroup.add(stressLine);
+                            photonLines.push(stressLine); 
+                            
+                            const normalArrow = new THREE.ArrowHelper(
+                                new THREE.Vector3(0, 1, 0), 
+                                new THREE.Vector3(spreadX, botY - 1, spreadZ), 
+                                1, 0x3388ff, 0.4, 0.2
+                        );
+                        visualGroup.add(normalArrow);
+                        }
+                    }
+                }
+
+                // --- PHOTON / LIGHT VISUALS ---
+                if (chkPhotons.checked) {
+                    const isTransparent = (params.density === 1.0 || params.density === 2.5);
+                    const rayCount = Math.min(Math.max(parseInt(inpRayCount.value) || 25, 1), 100);
+                    const nm = parseInt(inpWavelength.value) || 550;
+                    
+                    let rl=0, gl=0, bl=0;
+                    if (nm >= 380 && nm < 440) { rl = -(nm - 440) / (440 - 380); gl = 0.0; bl = 1.0; }
+                    else if (nm >= 440 && nm < 490) { rl = 0.0; gl = (nm - 440) / (490 - 440); bl = 1.0; }
+                    else if (nm >= 490 && nm < 510) { rl = 0.0; gl = 1.0; bl = -(nm - 510) / (510 - 490); }
+                    else if (nm >= 510 && nm < 580) { rl = (nm - 510) / (580 - 510); gl = 1.0; bl = 0.0; }
+                    else if (nm >= 580 && nm < 645) { rl = 1.0; gl = -(nm - 645) / (645 - 580); bl = 0.0; }
+                    else if (nm >= 645 && nm <= 780) { rl = 1.0; gl = 0.0; bl = 0.0; }
+                    
+                    let factor = 1.0;
+                    if (nm > 780) { rl = 1.0; gl = 0.0; bl = 0.0; factor = Math.max(0.15, 1.0 - (nm - 780) / 1000); }
+                    else if (nm < 380) { rl = 0.6; gl = 0.0; bl = 1.0; factor = Math.max(0.15, 1.0 - (380 - nm) / 300); }
+                    else if (nm >= 380 && nm < 420) { factor = 0.3 + 0.7 * (nm - 380) / (420 - 380); }
+                    else if (nm >= 700 && nm <= 780) { factor = 0.3 + 0.7 * (780 - nm) / (780 - 700); }
+                    
+                    const baseColor = new THREE.Color(Math.pow(rl * factor, 0.8), Math.pow(gl * factor, 0.8), Math.pow(bl * factor, 0.8));
+                    const bulbDistance = radius * 2 + 5;
+                    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.3), new THREE.MeshBasicMaterial({color: baseColor}));
+                    bulb.position.set(bulbDistance, topY + 2, bulbDistance);
+                    visualGroup.add(bulb);
+
+                    const raycaster = new THREE.Raycaster();
+                    
+                    const photonMat = new THREE.LineDashedMaterial({ color: baseColor, dashSize: 0.4, gapSize: 0.3, linewidth: 2 });
+                    const bounceMat = new THREE.LineDashedMaterial({ color: baseColor.clone().multiplyScalar(0.7), dashSize: 0.4, gapSize: 0.3, linewidth: 2 });
+                    const refractMat = new THREE.LineDashedMaterial({ color: baseColor.clone().lerp(new THREE.Color(0xffffff), 0.5), dashSize: 0.4, gapSize: 0.3, linewidth: 2 });
+
+                    let hits = 0;
+                    let attempts = 0;
+                    
+                    while(hits < rayCount && attempts < rayCount * 10) {
+                        attempts++;
+                        
+                        let targetX = (Math.random() - 0.5) * radius * 2;
+                        let targetY = botY + Math.random() * (topY - botY);
+                        let targetZ = (Math.random() - 0.5) * radius * 2;
+
+                        let target = new THREE.Vector3(targetX, targetY, targetZ);
+                        const direction = new THREE.Vector3().subVectors(target, bulb.position).normalize();
+                        raycaster.set(bulb.position, direction);
+                        
+                        const intersects = raycaster.intersectObject(mesh);
+                        if (intersects.length > 0) {
+                            hits++;
+                            const hitPoint = intersects[0].point;
+                            const normal = intersects[0].face.normal.clone().transformDirection(mesh.matrixWorld);
+
+                            const inLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([bulb.position, hitPoint]), photonMat);
+                            inLine.computeLineDistances();
+                            visualGroup.add(inLine);
+                            photonLines.push(inLine);
+
+                            if (isTransparent) {
+                                const refractDir = direction.clone().lerp(normal.clone().negate(), 0.3).normalize();
+                                const exitPoint = hitPoint.clone().add(refractDir.multiplyScalar(radius * 2.5));
+                                
+                                const passLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([hitPoint, exitPoint]), refractMat);
+                                passLine.computeLineDistances();
+                                visualGroup.add(passLine);
+                                photonLines.push(passLine);
+                            } else {
+                                const reflectDir = direction.clone().reflect(normal).normalize();
+                                const bouncePoint = hitPoint.clone().add(reflectDir.multiplyScalar(radius * 2.0));
+                                
+                                const outLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([hitPoint, bouncePoint]), bounceMat);
+                                outLine.computeLineDistances();
+                                visualGroup.add(outLine);
+                                photonLines.push(outLine);
+                            }
+                        }
+                    }
+                }
+            }
+
+            function createBipyramidGeometry(rad, height, n) {
+                const geom = new THREE.BufferGeometry();
+                const vertices = [];
+                const indices = [];
+
+                const halfH = height / 2;
+
+                vertices.push(0, halfH, 0);
+                vertices.push(0, -halfH, 0);
+
+                for (let i = 0; i < n; i++) {
+                    const angle = (i / n) * Math.PI * 2;
+                    const x = rad * Math.cos(angle);
+                    const z = rad * Math.sin(angle);
+                    vertices.push(x, 0, z);
+                }
+
+                for (let i = 0; i < n; i++) {
+                    const next = (i + 1) % n;
+                    const vCurr = 2 + i;
+                    const vNext = 2 + next;
+
+                    indices.push(0, vNext, vCurr);
+                    indices.push(1, vCurr, vNext);
+                }
+
+                geom.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+                geom.setIndex(indices);
+                geom.computeVertexNormals();
+
+                return geom;
+            }
+
+            function drawShape() {
+                if (!shapeGroup) return; 
+                while(shapeGroup.children.length > 0){ shapeGroup.remove(shapeGroup.children[0]); }
+                if (labelsContainer) labelsContainer.innerHTML = '';
+                activeLabels = [];
+
+                const shape = shapeSelect.value;
+                
+                const l = Math.max(params.l || 0.1, 0.1);
+                const w = Math.max(params.w || 0.1, 0.1);
+                const h = Math.max(params.h || 0.1, 0.1);
+                const r = Math.max(params.r || 0.1, 0.1);
+                const R = Math.max(params.R || 0.1, 0.1);
+                const r2 = Math.max(params.r2 || 0.1, 0.1);
+                const e = Math.max(params.e || 0.1, 0.1);
+                const e2 = Math.max(params.e2 || 0.1, 0.1);
+                const a = Math.max(params.a || 0.1, 0.1);
+                const c = Math.max(params.c || 0.1, 0.1);
+                const o = params.o || 0;
+
+                let geometry;
+
+                applyMaterialLook();
+
+                if (shape === 'box') {
+                    geometry = new THREE.BoxGeometry(l, h, w);
+                    const halfL = l / 2;
+                    const halfH = h / 2;
+                    const halfW = w / 2;
+                    
+                    createLine(new THREE.Vector3(-halfL, -halfH, halfW), new THREE.Vector3(halfL, -halfH, halfW));
+                    addLabel(`L: ${l}`, new THREE.Vector3(0, -halfH - 0.5, halfW));
+                    createLine(new THREE.Vector3(halfL, -halfH, halfW), new THREE.Vector3(halfL, halfH, halfW));
+                    addLabel(`H: ${h}`, new THREE.Vector3(halfL + 0.5, 0, halfW));
+                    createLine(new THREE.Vector3(halfL, -halfH, -halfW), new THREE.Vector3(halfL, -halfH, halfW));
+                    addLabel(`W: ${w}`, new THREE.Vector3(halfL + 0.5, -halfH - 0.5, 0));
+                } else if (shape === 'cube') {
+                    geometry = new THREE.BoxGeometry(e, e, e);
+                    const halfE = e/2;
+                    createLine(new THREE.Vector3(-halfE, -halfE, halfE), new THREE.Vector3(halfE, -halfE, halfE));
+                    addLabel(`Edge: ${e}`, new THREE.Vector3(0, -halfE - 0.5, halfE));
+                } else if (shape === 'sphere') {
+                    geometry = new THREE.SphereGeometry(r, 32, 32);
+                    createLine(new THREE.Vector3(0, 0, 0), new THREE.Vector3(r, 0, 0));
+                    addLabel(`R: ${r}`, new THREE.Vector3(r/2, 0.5, 0));
+                    shapeGroup.add(new THREE.Mesh(new THREE.SphereGeometry(0.15), new THREE.MeshBasicMaterial({color: 0xffcc00})));
+                } else if (shape === 'hemisphere') {
+                    geometry = new THREE.SphereGeometry(r, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2);
+                    createLine(new THREE.Vector3(0, 0, 0), new THREE.Vector3(r, 0, 0));
+                    addLabel(`R: ${r}`, new THREE.Vector3(r/2, 0.5, 0));
+                    const bottomMesh = new THREE.Mesh(new THREE.CircleGeometry(r, 32), material);
+                    bottomMesh.rotation.x = Math.PI / 2;
+                    shapeGroup.add(bottomMesh);
+                } else if (shape === 'cylinder') {
+                    geometry = new THREE.CylinderGeometry(r, r, h, 32);
+                    createLine(new THREE.Vector3(0, h/2, 0), new THREE.Vector3(r, h/2, 0));
+                    addLabel(`R: ${r}`, new THREE.Vector3(r/2, h/2 + 0.5, 0));
+                    createLine(new THREE.Vector3(r, -h/2, 0), new THREE.Vector3(r, h/2, 0));
+                    addLabel(`H: ${h}`, new THREE.Vector3(r + 0.8, 0, 0));
+                } else if (shape === 'cone') {
+                    geometry = new THREE.ConeGeometry(r, h, 32);
+                    createLine(new THREE.Vector3(0, -h/2, 0), new THREE.Vector3(r, -h/2, 0));
+                    addLabel(`R: ${r}`, new THREE.Vector3(r/2, -h/2 - 0.5, 0));
+                    createLine(new THREE.Vector3(0, -h/2, 0), new THREE.Vector3(0, h/2, 0));
+                    addLabel(`H: ${h}`, new THREE.Vector3(0, 0, 0.5));
+                } else if (shape === 'torus') {
+                    geometry = new THREE.TorusGeometry(R, r, 16, 64);
+                    geometry.rotateX(Math.PI / 2);
+                    createLine(new THREE.Vector3(0, 0, 0), new THREE.Vector3(R, 0, 0));
+                    addLabel(`R: ${R}`, new THREE.Vector3(R/2, 0.5, 0));
+                    createLine(new THREE.Vector3(R, 0, 0), new THREE.Vector3(R+r, 0, 0));
+                    addLabel(`r: ${r}`, new THREE.Vector3(R + r/2, 0.5, 0));
+                } else if (shape.startsWith('prism') || shape.startsWith('pyramid')) {
+                    const n = parseInt(shape.replace(/[a-z]/g, '')) || 3;
+                    const rad = e / (2 * Math.sin(Math.PI / n));
+                    geometry = shape.startsWith('prism') ? new THREE.CylinderGeometry(rad, rad, h, n) : new THREE.ConeGeometry(rad, h, n);
+                    createLine(new THREE.Vector3(0, -h/2, 0), new THREE.Vector3(0, h/2, 0));
+                    addLabel(`H: ${h}`, new THREE.Vector3(0, 0, rad + 0.5));
+                    const angle = Math.PI / n;
+                    createLine(new THREE.Vector3(rad * Math.cos(angle), -h/2, rad * Math.sin(angle)), new THREE.Vector3(rad * Math.cos(-angle), -h/2, rad * Math.sin(-angle)));
+                    addLabel(`E: ${e}`, new THREE.Vector3(rad, -h/2 - 0.5, 0));
+                } else if (shape.startsWith('antiprism')) {
+                    const n = parseInt(shape.replace('antiprism', '')) || 3;
+                    const rad = e / (2 * Math.sin(Math.PI / n));
+                    geometry = new THREE.CylinderGeometry(rad, rad, h, n);
+                    const pos = geometry.attributes.position;
+                    for(let i=0; i<pos.count; i++) {
+                        if (pos.getY(i) > 0) {
+                            const px = pos.getX(i), pz = pos.getZ(i), ang = Math.PI / n;
+                            pos.setX(i, px * Math.cos(ang) - pz * Math.sin(ang));
+                            pos.setZ(i, px * Math.sin(ang) + pz * Math.cos(ang));
+                        }
+                    }
+                    pos.needsUpdate = true;
+                    geometry.computeVertexNormals();
+                    createLine(new THREE.Vector3(0, -h/2, 0), new THREE.Vector3(0, h/2, 0));
+                    addLabel(`H: ${h}`, new THREE.Vector3(0.5, 0, rad + 0.5));
+                } else if (shape.startsWith('bipyramid')) {
+                    const n = parseInt(shape.replace('bipyramid', '')) || 3;
+                    const rad = e / (2 * Math.sin(Math.PI / n));
+                    geometry = createBipyramidGeometry(rad, h, n);
+                    
+                    createLine(new THREE.Vector3(0, -h/2, 0), new THREE.Vector3(0, h/2, 0));
+                    addLabel(`Total H: ${h}`, new THREE.Vector3(0, h/2 + 1, 0));
+                } else if (shape === 'frustum') {
+                    geometry = new THREE.CylinderGeometry(r2, R, h, 32);
+                    createLine(new THREE.Vector3(0, -h/2, 0), new THREE.Vector3(R, -h/2, 0));
+                    addLabel(`R: ${R}`, new THREE.Vector3(R/2, -h/2 - 0.5, 0));
+                    createLine(new THREE.Vector3(0, h/2, 0), new THREE.Vector3(r2, h/2, 0));
+                    addLabel(`r: ${r2}`, new THREE.Vector3(r2/2, h/2 + 0.5, 0));
+                    createLine(new THREE.Vector3(0, -h/2, 0), new THREE.Vector3(0, h/2, 0));
+                    addLabel(`H: ${h}`, new THREE.Vector3(0, 0, R/2 + 0.5));
+                } else if (shape === 'pyr_frustum') {
+                    const radB = e / Math.SQRT2; const radT = e2 / Math.SQRT2;
+                    geometry = new THREE.CylinderGeometry(radT, radB, h, 4);
+                    geometry.rotateY(Math.PI/4);
+                    createLine(new THREE.Vector3(0, -h/2, 0), new THREE.Vector3(0, h/2, 0));
+                    addLabel(`H: ${h}`, new THREE.Vector3(0.5, 0, radB + 0.5));
+                } else if (shape === 'oblique_cyl') {
+                    geometry = new THREE.CylinderGeometry(r, r, h, 32);
+                    const pos = geometry.attributes.position;
+                    for(let i=0; i<pos.count; i++) pos.setX(i, pos.getX(i) + (pos.getY(i) / h) * o);
+                    geometry.computeVertexNormals();
+                    createLine(new THREE.Vector3(0, -h/2, 0), new THREE.Vector3(o/2, h/2, 0));
+                    addLabel(`Offset H`, new THREE.Vector3(o/2 + 0.5, 0, r));
+                } else if (shape === 'ellipsoid' || shape === 'spheroid') {
+                    geometry = new THREE.SphereGeometry(1, 32, 32);
+                    geometry.scale(a, c, a); 
+                    createLine(new THREE.Vector3(0, 0, 0), new THREE.Vector3(a, 0, 0));
+                    addLabel(`A: ${a}`, new THREE.Vector3(a/2, 0.5, 0));
+                    createLine(new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, c, 0));
+                    addLabel(`C: ${c}`, new THREE.Vector3(0, c/2, 0.5));
+                } else if (shape === 'paraboloid') {
+                    const pts = [];
+                    for(let i=0; i<=20; i++){
+                        let py = (i/20)*h;
+                        pts.push(new THREE.Vector2(r * Math.sqrt(py/h), py - h/2));
+                    }
+                    geometry = new THREE.LatheGeometry(pts, 32);
+                    createLine(new THREE.Vector3(0, h/2, 0), new THREE.Vector3(r, h/2, 0));
+                    addLabel(`R: ${r}`, new THREE.Vector3(r/2, h/2 + 0.5, 0));
+                } else if (shape === 'hyperboloid') {
+                    const pts = [];
+                    for(let i=0; i<=20; i++){
+                        let py = (i/20)*h - h/2;
+                        let k2 = (h*h) / (4 * (R*R/(r2*r2) - 1));
+                        pts.push(new THREE.Vector2(r2 * Math.sqrt(1 + (py*py)/k2), py));
+                    }
+                    geometry = new THREE.LatheGeometry(pts, 32);
+                    createLine(new THREE.Vector3(0, 0, 0), new THREE.Vector3(r2, 0, 0));
+                    addLabel(`Neck: ${r2}`, new THREE.Vector3(r2 + 1, 0, 0));
+                } else if (['tetrahedron', 'octahedron', 'dodecahedron', 'icosahedron'].includes(shape)) {
+                    let rad = e;
+                    if(shape==='tetrahedron') { rad = e * Math.sqrt(6)/4; geometry = new THREE.TetrahedronGeometry(rad); }
+                    if(shape==='octahedron') { rad = e / Math.SQRT2; geometry = new THREE.OctahedronGeometry(rad); }
+                    if(shape==='dodecahedron') { rad = e * (Math.sqrt(3)*(1+Math.sqrt(5)))/4; geometry = new THREE.DodecahedronGeometry(rad); }
+                    if(shape==='icosahedron') { rad = e / 4 * Math.sqrt(10 + 2*Math.sqrt(5)); geometry = new THREE.IcosahedronGeometry(rad); }
+                    addLabel(`Edge: ${e}`, new THREE.Vector3(0, rad + 0.5, 0));
+                } else {
+                    geometry = new THREE.IcosahedronGeometry(e * 1.5, 1);
+                    addLabel(`Edge: ${e} (Proxy)`, new THREE.Vector3(0, e * 1.5 + 1, 0));
+                }
+
+                if (geometry) {
+                    const mesh = new THREE.Mesh(geometry, material);
+                    shapeGroup.add(mesh);
+                    if (!chkRealistic.checked) {
+                        shapeGroup.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry), new THREE.LineBasicMaterial({ color: 0x312e81, transparent: true, opacity: 0.5 })));
+                    }
+                    buildPhysicsVisuals(mesh);
+                }
+            }
+
+            function animate() {
+                requestAnimationFrame(animate);
+                renderer.render(scene, camera);
+
+                photonLines.forEach(line => {
+                    if (line.material && line.material.dashSize) {
+                        line.material.dashOffset -= 0.05;
+                    }
+                });
+
+                const cw = document.getElementById('canvas-container').clientWidth;
+                const ch = document.getElementById('canvas-container').clientHeight;
+                if(cw === 0 || ch === 0) return;
+
+                activeLabels.forEach(label => {
+                    const vector = label.position.clone();
+                    vector.applyMatrix4(shapeGroup.matrixWorld);
+                    vector.project(camera);
+                    label.element.style.left = `${(vector.x * .5 + .5) * cw}px`;
+                    label.element.style.top = `${(vector.y * -.5 + .5) * ch}px`;
+                });
+            }
+
+            // --- 3. 2D SVG FALLBACK ---
+            function init2D() {
+                const container = document.getElementById('canvas-container');
+                container.innerHTML = `
+                    <div style="position: absolute; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(255,165,0,0.15); border: 1px solid #ffcc00; padding: 10px 20px; border-radius: 8px; color: #ffcc00; font-size: 13px; text-align: center; z-index: 5; max-width: 80%; box-shadow: 0 4px 6px rgba(0,0,0,0.2);">
+                        ⚠️ WebGL is blocked or unsupported. Showing 2D SVG fallback blueprint.
+                    </div>
+                    <div style="width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; pointer-events: none;">
+                        <svg id="fallback-svg" viewBox="0 0 400 400" style="width: 100%; height: 100%; max-width: 500px; max-height: 500px; pointer-events: auto;"></svg>
+                    </div>
+                `;
+                document.getElementById("engine-status").innerText = "2D vector math (FallBack)";
+                document.getElementById("engine-status").classList.replace("text-indigo-300", "text-amber-400");
+                
+                window.update3DScene = function() {
+                    const svg = document.getElementById('fallback-svg');
+                    if (!svg) return;
+                    
+                    const shape = shapeSelect.value;
+                    const l = Math.max(params.l || 0.1, 0.1);
+                    const w = Math.max(params.w || 0.1, 0.1);
+                    const h = Math.max(params.h || 0.1, 0.1);
+                    const r = Math.max(params.r || 0.1, 0.1);
+                    const R = Math.max(params.R || 0.1, 0.1);
+                    const r2 = Math.max(params.r2 || 0.1, 0.1);
+                    const e = Math.max(params.e || 0.1, 0.1);
+                    const e2 = Math.max(params.e2 || 0.1, 0.1);
+                    const a = Math.max(params.a || 0.1, 0.1);
+                    const c = Math.max(params.c || 0.1, 0.1);
+                    
+                    const cx = 200, cy = 200, scale = 15; 
+                    let content = '';
+                    
+                    const drawLine = (x1, y1, x2, y2, color='#ffcc00', dash='') => 
+                        `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${color}" stroke-width="2.5" stroke-dasharray="${dash}" />`;
+                    const drawText = (txt, x, y) => 
+                        `<text x="${x}" y="${y}" fill="#fff" font-family="monospace" font-size="14" font-weight="bold" text-anchor="middle" dominant-baseline="middle">${txt}</text>`;
+                    
+                    if (shape === 'box') {
+                        const drawW = w * scale, drawH = h * scale;
+                        content += `<rect x="${cx - drawW/2}" y="${cy - drawH/2}" width="${drawW}" height="${drawH}" fill="rgba(79, 70, 229, 0.3)" stroke="#a8b1ff" stroke-width="3" />`;
+                        content += drawText(`W: ${w}`, cx, cy + drawH/2 + 20);
+                        content += drawText(`H: ${h}`, cx + drawW/2 + 30, cy);
+                        content += drawText(`L: ${l} (Depth)`, cx, cy - drawH/2 - 20);
+                    } else if (shape === 'cube') {
+                        const drawW = e * scale;
+                        content += `<rect x="${cx - drawW/2}" y="${cy - drawW/2}" width="${drawW}" height="${drawW}" fill="rgba(79, 70, 229, 0.3)" stroke="#a8b1ff" stroke-width="3" />`;
+                        content += drawText(`Edge: ${e}`, cx, cy + drawW/2 + 20);
+                    } else if (shape === 'sphere' || shape === 'hemisphere') {
+                        content += `<circle cx="${cx}" cy="${cy}" r="${r * scale}" fill="rgba(79, 70, 229, 0.3)" stroke="#a8b1ff" stroke-width="3" />`;
+                        content += drawLine(cx, cy, cx + r*scale, cy);
+                        content += drawText(`R: ${r}`, cx + r*scale/2, cy - 15);
+                    } else if (shape === 'cylinder') {
+                        const drawW = r * 2 * scale, drawH = h * scale;
+                        content += `<rect x="${cx - drawW/2}" y="${cy - drawH/2}" width="${drawW}" height="${drawH}" fill="rgba(79, 70, 229, 0.3)" stroke="#a8b1ff" stroke-width="3" />`;
+                        content += drawLine(cx, cy - drawH/2, cx + r*scale, cy - drawH/2);
+                        content += drawText(`R: ${r}`, cx + r*scale/2, cy - 15);
+                        content += drawText(`H: ${h}`, cx + drawW/2 + 30, cy);
+                    } else if (shape === 'cone') {
+                        const drawW = r * 2 * scale, drawH = h * scale;
+                        content += `<polygon points="${cx},${cy - drawH/2} ${cx + drawW/2},${cy + drawH/2} ${cx - drawW/2},${cy + drawH/2}" fill="rgba(79, 70, 229, 0.3)" stroke="#a8b1ff" stroke-width="3" />`;
+                        content += drawLine(cx, cy + drawH/2, cx + drawW/2, cy + drawH/2);
+                        content += drawLine(cx, cy - drawH/2, cx, cy + drawH/2, '#ffcc00', '5,5');
+                        content += drawText(`R: ${r}`, cx + drawW/4, cy + drawH/2 + 20);
+                        content += drawText(`H: ${h}`, cx - 25, cy);
+                    } else if (shape === 'ellipsoid' || shape === 'spheroid') {
+                        content += `<ellipse cx="${cx}" cy="${cy}" rx="${a * scale}" ry="${c * scale}" fill="rgba(79, 70, 229, 0.3)" stroke="#a8b1ff" stroke-width="3" />`;
+                        content += drawLine(cx, cy, cx + a*scale, cy);
+                        content += drawText(`A: ${a}`, cx + a*scale/2, cy - 15);
+                        content += drawText(`C: ${c}`, cx - 20, cy + c*scale/2);
+                    } else if (shape === 'frustum') {
+                        const drawW1 = R * 2 * scale, drawW2 = r2 * 2 * scale, drawH = h * scale;
+                        content += `<polygon points="${cx - drawW2/2},${cy - drawH/2} ${cx + drawW2/2},${cy - drawH/2} ${cx + drawW1/2},${cy + drawH/2} ${cx - drawW1/2},${cy + drawH/2}" fill="rgba(79, 70, 229, 0.3)" stroke="#a8b1ff" stroke-width="3" />`;
+                        content += drawText(`R: ${R}`, cx, cy + drawH/2 + 20);
+                        content += drawText(`r: ${r2}`, cx, cy - drawH/2 - 15);
+                        content += drawText(`H: ${h}`, cx - drawW1/2 - 25, cy);
+                    } else if (shape === 'pyr_frustum') {
+                        const drawW1 = e * scale, drawW2 = e2 * scale, drawH = h * scale;
+                        content += `<polygon points="${cx - drawW2/2},${cy - drawH/2} ${cx + drawW2/2},${cy - drawH/2} ${cx + drawW1/2},${cy + drawH/2} ${cx - drawW1/2},${cy + drawH/2}" fill="rgba(79, 70, 229, 0.3)" stroke="#a8b1ff" stroke-width="3" />`;
+                        content += drawText(`Base Edge: ${e}`, cx, cy + drawH/2 + 20);
+                        content += drawText(`Top Edge: ${e2}`, cx, cy - drawH/2 - 15);
+                    } else if (shape === 'torus') {
+                        content += `<circle cx="${cx}" cy="${cy}" r="${R * scale}" fill="none" stroke="rgba(79, 70, 229, 0.3)" stroke-width="${r * scale * 2}" />`;
+                        content += `<circle cx="${cx}" cy="${cy}" r="${R * scale + r * scale}" fill="none" stroke="#a8b1ff" stroke-width="3" />`;
+                        content += `<circle cx="${cx}" cy="${cy}" r="${R * scale - r * scale}" fill="none" stroke="#a8b1ff" stroke-width="3" />`;
+                        content += drawText(`R: ${R}`, cx + R*scale/2, cy);
+                        content += drawText(`r: ${r}`, cx + R*scale + r*scale/2, cy - 15);
+                    } else {
+                        content += `<circle cx="${cx}" cy="${cy}" r="60" fill="rgba(79, 70, 229, 0.3)" stroke="#a8b1ff" stroke-width="3" stroke-dasharray="5,5" />`;
+                        content += drawText(shapeSelect.options[shapeSelect.selectedIndex].text, cx, cy);
+                        content += drawText(`Edge/Radius context active`, cx, cy + 25);
+                    }
+                    svg.innerHTML = content;
+                };
+                window.update3DScene();
+            }
+
+            // --- 4. LAUNCHER ---
+            if (typeof THREE === 'undefined') {
+                init2D();
+            } else {
+                try {
+                    const gl = document.createElement('canvas').getContext('webgl') || document.createElement('canvas').getContext('experimental-webgl');
+                    if (!gl) throw new Error("WebGL disabled.");
+                    init3D();
+                } catch(err) {
+                    init2D();
+                }
+            }
+        }
+
+        // State-aware robust wrapper to prevent iframe readyState race conditions
+        if (document.readyState === 'complete') {
+            initializeCalculator();
+        } else {
+            window.addEventListener('load', initializeCalculator);
+        }
+    </script>
+</body>
+</html>
